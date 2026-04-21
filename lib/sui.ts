@@ -1,6 +1,17 @@
-// Sui mainnet — balances via JSON-RPC, prices via CoinGecko's Sui token-price
-// endpoint with a fallback to the native SUI coin price. Unknown coins are
-// reported with valueUsd=0 so they show up without distorting totals.
+// Sui mainnet — balances via JSON-RPC, prices via CoinGecko.
+//
+// Two CoinGecko quirks drove this approach:
+//  1) The free-tier `simple/token_price/sui` endpoint only accepts one
+//     contract_address per request (error 10012), so batching fails for
+//     wallets holding multiple Sui coins.
+//  2) CoinGecko stores Sui platform addresses in fully 32-byte-padded form
+//     (e.g. `0x0000…0002::sui::SUI` for native SUI), while Sui RPC returns
+//     the short canonical form (`0x2::sui::SUI`). Direct string matching
+//     misses the native coin entirely.
+//
+// Instead, we fetch `coins/list?include_platform=true` once (cached 6h),
+// build a normalized coinType → CoinGecko id map, then batch-price all
+// mapped coins with `simple/price?ids=…`.
 import { memoize } from "./cache";
 
 export type SuiPosition = {
@@ -15,7 +26,6 @@ export type SuiResult = {
 };
 
 const RPC_URL = "https://fullnode.mainnet.sui.io:443";
-const NATIVE_SUI = "0x2::sui::SUI";
 const UA = "Mozilla/5.0 (compatible; crypto-portfolio/1.0)";
 
 type RpcBalance = { coinType: string; totalBalance: string };
@@ -37,11 +47,41 @@ async function rpc<T>(method: string, params: unknown[]): Promise<T> {
   return j.result as T;
 }
 
-async function fetchTokenPrices(coinTypes: string[]): Promise<Record<string, number>> {
-  if (coinTypes.length === 0) return {};
+// Zero-pad the address prefix to 32 bytes so short-form `0x2::sui::SUI` and
+// long-form `0x0000…0002::sui::SUI` collapse to the same key. Module and
+// type names are left as-is (they remain case-sensitive in Sui).
+function normalizeCoinType(t: string): string {
+  const parts = t.split("::");
+  if (parts.length < 2) return t.toLowerCase();
+  const addr = parts[0].toLowerCase().replace(/^0x/, "").padStart(64, "0");
+  return `0x${addr}::${parts.slice(1).join("::")}`;
+}
+
+async function rawCoinMap(): Promise<Record<string, string>> {
+  const r = await fetch("https://api.coingecko.com/api/v3/coins/list?include_platform=true", {
+    headers: { "User-Agent": UA, Accept: "application/json" },
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(`CoinGecko coins/list ${r.status}`);
+  const list = (await r.json()) as Array<{ id: string; platforms?: Record<string, string | null> }>;
+  const out: Record<string, string> = {};
+  for (const c of list) {
+    const suiAddr = c.platforms?.sui;
+    if (!suiAddr) continue;
+    out[normalizeCoinType(suiAddr)] = c.id;
+  }
+  return out;
+}
+
+function fetchSuiCoinMap() {
+  return memoize("sui-coin-map", 6 * 60 * 60 * 1000, rawCoinMap);
+}
+
+async function fetchPricesByIds(ids: string[]): Promise<Record<string, number>> {
+  if (ids.length === 0) return {};
   const url =
-    "https://api.coingecko.com/api/v3/simple/token_price/sui" +
-    `?contract_addresses=${encodeURIComponent(coinTypes.join(","))}&vs_currencies=usd`;
+    "https://api.coingecko.com/api/v3/simple/price" +
+    `?ids=${encodeURIComponent(ids.join(","))}&vs_currencies=usd`;
   const r = await fetch(url, {
     headers: { "User-Agent": UA, Accept: "application/json" },
     cache: "no-store",
@@ -49,44 +89,44 @@ async function fetchTokenPrices(coinTypes: string[]): Promise<Record<string, num
   if (!r.ok) return {};
   const j = await r.json().catch(() => ({}));
   const out: Record<string, number> = {};
-  for (const [k, v] of Object.entries(j ?? {})) {
+  for (const [id, v] of Object.entries(j ?? {})) {
     const p = Number((v as any)?.usd);
-    if (Number.isFinite(p)) out[k.toLowerCase()] = p;
+    if (Number.isFinite(p)) out[id] = p;
   }
   return out;
 }
 
-async function fetchNativeSuiPrice(): Promise<number> {
-  const r = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=sui&vs_currencies=usd", {
-    headers: { "User-Agent": UA, Accept: "application/json" },
-    cache: "no-store",
-  });
-  if (!r.ok) return 0;
-  const j = await r.json().catch(() => ({}));
-  const p = Number(j?.sui?.usd);
-  return Number.isFinite(p) ? p : 0;
-}
-
 async function rawSui(address: string): Promise<SuiResult> {
-  const balances = await rpc<RpcBalance[]>("suix_getAllBalances", [address]);
-  if (!balances?.length) return { totalUsd: 0, positions: [] };
+  const balances = (await rpc<RpcBalance[]>("suix_getAllBalances", [address])) ?? [];
+  // Drop zero balances early — scam-targeted wallets can accumulate hundreds
+  // of dust coin types that would otherwise flood per-coin metadata calls.
+  const nonZero = balances.filter((b) => b.totalBalance && b.totalBalance !== "0");
+  if (nonZero.length === 0) return { totalUsd: 0, positions: [] };
 
-  const metas = await Promise.all(
-    balances.map((b) => rpc<RpcMetadata>("suix_getCoinMetadata", [b.coinType]).catch(() => null)),
-  );
-
-  const [tokenPrices, nativePrice] = await Promise.all([
-    fetchTokenPrices(balances.map((b) => b.coinType)),
-    balances.some((b) => b.coinType === NATIVE_SUI) ? fetchNativeSuiPrice() : Promise.resolve(0),
+  const [metas, coinMapRes] = await Promise.all([
+    Promise.all(
+      nonZero.map((b) => rpc<RpcMetadata>("suix_getCoinMetadata", [b.coinType]).catch(() => null)),
+    ),
+    fetchSuiCoinMap(),
   ]);
+  const coinMap = coinMapRes.value;
 
-  const positions: SuiPosition[] = balances.map((b, i) => {
+  const ids = Array.from(
+    new Set(
+      nonZero
+        .map((b) => coinMap[normalizeCoinType(b.coinType)])
+        .filter((x): x is string => !!x),
+    ),
+  );
+  const prices = await fetchPricesByIds(ids);
+
+  const positions: SuiPosition[] = nonZero.map((b, i) => {
     const meta = metas[i];
     const decimals = meta?.decimals ?? 9;
     const symbol = (meta?.symbol ?? "").toUpperCase() || "UNKNOWN";
     const qty = Number(b.totalBalance) / Math.pow(10, decimals);
-    let price = tokenPrices[b.coinType.toLowerCase()] ?? 0;
-    if (!price && b.coinType === NATIVE_SUI) price = nativePrice;
+    const id = coinMap[normalizeCoinType(b.coinType)];
+    const price = id ? prices[id] ?? 0 : 0;
     const valueUsd = qty * price;
     return {
       symbol,
