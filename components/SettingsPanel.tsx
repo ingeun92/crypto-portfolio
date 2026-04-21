@@ -12,6 +12,7 @@ type FormState = {
   total_deposit_krw: string;
   evm_address: string;
   solana_address: string;
+  sui_address: string;
   stable_qty: string;
   mega_qty: string;
 };
@@ -21,6 +22,7 @@ export function SettingsPanel({ config, onClose }: Props) {
     total_deposit_krw: String(config.total_deposit_krw ?? 0),
     evm_address: config.evm_address ?? "",
     solana_address: config.solana_address ?? "",
+    sui_address: config.sui_address ?? "",
     stable_qty: String(config.stable_qty ?? 0),
     mega_qty: String(config.mega_qty ?? 0),
   });
@@ -39,6 +41,7 @@ export function SettingsPanel({ config, onClose }: Props) {
         total_deposit_krw: Number(form.total_deposit_krw) || 0,
         evm_address: form.evm_address.trim() || null,
         solana_address: form.solana_address.trim() || null,
+        sui_address: form.sui_address.trim() || null,
         stable_qty: Number(form.stable_qty) || 0,
         mega_qty: Number(form.mega_qty) || 0,
       };
@@ -101,6 +104,13 @@ export function SettingsPanel({ config, onClose }: Props) {
               label="Solana Address · Phantom"
               value={form.solana_address}
               onChange={(v) => set("solana_address", v)}
+              mono
+            />
+            <Field
+              label="Sui Address · Phantom"
+              value={form.sui_address}
+              onChange={(v) => set("sui_address", v)}
+              placeholder="0x…"
               mono
             />
           </Section>

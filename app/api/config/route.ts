@@ -13,7 +13,14 @@ export async function GET() {
   }
 }
 
-const ALLOWED_KEYS = ["total_deposit_krw", "evm_address", "solana_address", "stable_qty", "mega_qty"] as const;
+const ALLOWED_KEYS = [
+  "total_deposit_krw",
+  "evm_address",
+  "solana_address",
+  "sui_address",
+  "stable_qty",
+  "mega_qty",
+] as const;
 
 export async function PATCH(req: NextRequest) {
   const body = await req.json().catch(() => ({}));

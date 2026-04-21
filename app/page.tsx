@@ -12,6 +12,7 @@ const FALLBACK_CONFIG: Config = {
   total_deposit_krw: 0,
   evm_address: null,
   solana_address: null,
+  sui_address: null,
   stable_qty: 0,
   mega_qty: 0,
   updated_at: new Date().toISOString(),

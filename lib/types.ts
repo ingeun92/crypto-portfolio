@@ -3,6 +3,7 @@ export type Config = {
   total_deposit_krw: number;
   evm_address: string | null;
   solana_address: string | null;
+  sui_address: string | null;
   stable_qty: number;
   mega_qty: number;
   updated_at: string;

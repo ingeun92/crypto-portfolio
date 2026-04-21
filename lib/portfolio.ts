@@ -1,11 +1,13 @@
 import { getOrCreateConfig } from "./supabase";
 import { fetchMegaPriceUsd, fetchStablePriceUsd, fetchUsdKrw } from "./prices";
 import { zerionPortfolio, type ZerionResult } from "./zerion";
+import { suiPortfolio, type SuiResult } from "./sui";
 import { sleep } from "./cache";
 import type { PortfolioData, PlatformBreakdown } from "./types";
 
 type CachedNumber = { value: number; stale: boolean; ageMs: number };
 type CachedZerion = { value: ZerionResult; stale: boolean; ageMs: number };
+type CachedSui = { value: SuiResult; stale: boolean; ageMs: number };
 
 function describeAge(ageMs: number): string {
   const s = Math.round(ageMs / 1000);
@@ -51,6 +53,24 @@ async function safeZerion(
   }
 }
 
+async function safeSui(
+  label: string,
+  address: string | null,
+  warnings: string[],
+): Promise<{ result: SuiResult; unavailable: boolean }> {
+  if (!address) {
+    return { result: { totalUsd: 0, positions: [] }, unavailable: true };
+  }
+  try {
+    const r = (await suiPortfolio(address)) as CachedSui;
+    if (r.stale) warnings.push(`${label}: using cached portfolio (${describeAge(r.ageMs)})`);
+    return { result: r.value, unavailable: false };
+  } catch (e: any) {
+    warnings.push(`${label}: ${String(e?.message ?? e)}`);
+    return { result: { totalUsd: 0, positions: [] }, unavailable: true };
+  }
+}
+
 export async function computePortfolio(): Promise<PortfolioData & { warnings: string[] }> {
   const cfg = await getOrCreateConfig();
   const zerionKey = process.env.ZERION_API_KEY ?? "";
@@ -65,10 +85,14 @@ export async function computePortfolio(): Promise<PortfolioData & { warnings: st
 
   // Zerion rate-limits aggressively on the free tier — serialize the two
   // address calls with a small gap so back-to-back refreshes are less likely
-  // to get the second request throttled.
+  // to get the second request throttled. Sui uses a separate RPC + CoinGecko,
+  // so we fire it in parallel with the second Zerion call.
   const rabby = await safeZerion("Rabby", cfg.evm_address, zerionKey, warnings);
   if (cfg.evm_address && cfg.solana_address) await sleep(400);
-  const phantom = await safeZerion("Phantom", cfg.solana_address, zerionKey, warnings);
+  const [phantomSol, phantomSui] = await Promise.all([
+    safeZerion("Phantom (Solana)", cfg.solana_address, zerionKey, warnings),
+    safeSui("Phantom (Sui)", cfg.sui_address, warnings),
+  ]);
 
   // Remove any MEGA position from Rabby total so we don't double-count — we
   // add a fresh MEGA valuation from Bybit's live price below.
@@ -80,11 +104,21 @@ export async function computePortfolio(): Promise<PortfolioData & { warnings: st
   const megaValueUsd = Number(cfg.mega_qty) * megaPrice;
   const stableValueUsd = Number(cfg.stable_qty) * stablePrice;
 
+  // Phantom holds both Solana (via Zerion) and Sui (via Sui RPC + CoinGecko).
+  // Treat Phantom as unavailable only when every configured address failed,
+  // so a partial result (e.g. Sui priced but Solana rate-limited) still shows.
+  const phantomHasSol = !!cfg.solana_address && !phantomSol.unavailable;
+  const phantomHasSui = !!cfg.sui_address && !phantomSui.unavailable;
+  const phantomConfigured = !!cfg.solana_address || !!cfg.sui_address;
+  const phantomValueUsd =
+    (phantomHasSol ? phantomSol.result.totalUsd : 0) + (phantomHasSui ? phantomSui.result.totalUsd : 0);
+  const phantomUnavailable = !phantomConfigured || (!phantomHasSol && !phantomHasSui);
+
   type Part = { label: string; valueUsd: number; unavailable: boolean };
   const parts: Part[] = [
     { label: "Rabby (Net)", valueUsd: rabbyNetUsd, unavailable: rabby.unavailable },
     { label: "$MEGA · MegaETH", valueUsd: megaValueUsd, unavailable: false },
-    { label: "Phantom", valueUsd: phantom.result.totalUsd, unavailable: phantom.unavailable },
+    { label: "Phantom", valueUsd: phantomValueUsd, unavailable: phantomUnavailable },
     { label: "Bybit · $STABLE", valueUsd: stableValueUsd, unavailable: false },
   ];
 
