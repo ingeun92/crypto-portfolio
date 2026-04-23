@@ -37,12 +37,13 @@ async function safeZerion(
   address: string | null,
   apiKey: string,
   warnings: string[],
+  chainId?: string,
 ): Promise<{ result: ZerionResult; unavailable: boolean }> {
   if (!address) {
     return { result: { totalUsd: 0, positions: [] }, unavailable: true };
   }
   try {
-    const r = (await zerionPortfolio(address, apiKey)) as CachedZerion;
+    const r = (await zerionPortfolio(address, apiKey, chainId)) as CachedZerion;
     if (r.stale) warnings.push(`${label}: using cached portfolio (${describeAge(r.ageMs)})`);
     return { result: r.value, unavailable: false };
   } catch (e: any) {
@@ -91,7 +92,7 @@ export async function computePortfolio(): Promise<PortfolioData & { warnings: st
   const rabby = await safeZerion("Rabby", cfg.evm_address, zerionKey, warnings);
   if (cfg.evm_address && cfg.solana_address) await sleep(900);
   const [phantomSol, phantomSui] = await Promise.all([
-    safeZerion("Phantom (Solana)", cfg.solana_address, zerionKey, warnings),
+    safeZerion("Phantom (Solana)", cfg.solana_address, zerionKey, warnings, "solana"),
     safeSui("Phantom (Sui)", cfg.sui_address, warnings),
   ]);
 

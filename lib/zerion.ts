@@ -27,10 +27,11 @@ function parseRetryAfter(h: string | null): number {
   return 0;
 }
 
-async function rawZerion(address: string, apiKey: string): Promise<ZerionResult> {
+async function rawZerion(address: string, apiKey: string, chainId?: string): Promise<ZerionResult> {
+  const chainParam = chainId ? `&filter[chain_ids]=${encodeURIComponent(chainId)}` : "";
   const url =
     `https://api.zerion.io/v1/wallets/${encodeURIComponent(address)}/positions/` +
-    `?currency=usd&filter[positions]=only_simple&filter[trash]=only_non_trash&page[size]=100`;
+    `?currency=usd&filter[positions]=only_simple&filter[trash]=only_non_trash&page[size]=100${chainParam}`;
 
   // Free-tier Zerion throttles bursty refreshes with 429s. Retry a couple
   // times with exponential backoff (+ Retry-After hint) before giving up so
@@ -80,12 +81,13 @@ function parseZerionResponse(j: any): ZerionResult {
  * Cached wrapper. TTL 90s is chosen so multiple dashboard refreshes in a
  * short window don't burst Zerion and hit 429s on the free tier.
  */
-export function zerionPortfolio(address: string, apiKey: string) {
+export function zerionPortfolio(address: string, apiKey: string, chainId?: string) {
   if (!apiKey) throw new Error("ZERION_API_KEY missing");
   if (!address) return Promise.resolve({ value: { totalUsd: 0, positions: [] } as ZerionResult, stale: false, ageMs: 0 });
   // Extend the stale window to 2h: a brief Zerion 429 storm shouldn't flash
   // "unavailable" on the dashboard if we have any recent value to fall back on.
-  return memoize(`zerion:${address}`, 90_000, () => rawZerion(address, apiKey), {
+  const cacheKey = chainId ? `zerion:${address}:${chainId}` : `zerion:${address}`;
+  return memoize(cacheKey, 90_000, () => rawZerion(address, apiKey, chainId), {
     maxStaleMs: 2 * 60 * 60 * 1000,
   });
 }
