@@ -1,6 +1,6 @@
 // Zerion REST API — works for EVM addresses and (as of late 2024) Solana.
 // Docs: https://developers.zerion.io
-import { memoize } from "./cache";
+import { memoize, sleep } from "./cache";
 
 export type ZerionPosition = {
   symbol: string;
@@ -18,23 +18,48 @@ function basicAuth(apiKey: string): string {
   return "Basic " + btoa(`${apiKey}:`);
 }
 
+function parseRetryAfter(h: string | null): number {
+  if (!h) return 0;
+  const n = Number(h);
+  if (Number.isFinite(n) && n >= 0) return Math.min(n * 1000, 5_000);
+  const when = Date.parse(h);
+  if (Number.isFinite(when)) return Math.max(0, Math.min(when - Date.now(), 5_000));
+  return 0;
+}
+
 async function rawZerion(address: string, apiKey: string): Promise<ZerionResult> {
   const url =
     `https://api.zerion.io/v1/wallets/${encodeURIComponent(address)}/positions/` +
     `?currency=usd&filter[positions]=only_simple&filter[trash]=only_non_trash&page[size]=100`;
 
-  const r = await fetch(url, {
-    headers: {
-      Authorization: basicAuth(apiKey),
-      Accept: "application/json",
-    },
-    cache: "no-store",
-  });
-  if (!r.ok) {
-    const body = await r.text().catch(() => "");
-    throw new Error(`Zerion ${r.status}: ${body.slice(0, 200)}`);
+  // Free-tier Zerion throttles bursty refreshes with 429s. Retry a couple
+  // times with exponential backoff (+ Retry-After hint) before giving up so
+  // the memoize layer can still serve a stale value on a real outage.
+  const maxAttempts = 3;
+  let lastStatus = 0;
+  let lastBody = "";
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const r = await fetch(url, {
+      headers: {
+        Authorization: basicAuth(apiKey),
+        Accept: "application/json",
+      },
+      cache: "no-store",
+    });
+    if (r.ok) return parseZerionResponse(await r.json());
+
+    lastStatus = r.status;
+    lastBody = await r.text().catch(() => "");
+    const retriable = r.status === 429 || r.status === 503 || r.status === 502;
+    if (!retriable || attempt === maxAttempts) break;
+    const hinted = parseRetryAfter(r.headers.get("retry-after"));
+    const backoff = hinted > 0 ? hinted : 500 * 2 ** (attempt - 1);
+    await sleep(backoff);
   }
-  const j = await r.json();
+  throw new Error(`Zerion ${lastStatus}: ${lastBody.slice(0, 200)}`);
+}
+
+function parseZerionResponse(j: any): ZerionResult {
   const rows: any[] = Array.isArray(j?.data) ? j.data : [];
   const positions: ZerionPosition[] = rows.map((p) => {
     const attrs = p?.attributes ?? {};
@@ -58,5 +83,9 @@ async function rawZerion(address: string, apiKey: string): Promise<ZerionResult>
 export function zerionPortfolio(address: string, apiKey: string) {
   if (!apiKey) throw new Error("ZERION_API_KEY missing");
   if (!address) return Promise.resolve({ value: { totalUsd: 0, positions: [] } as ZerionResult, stale: false, ageMs: 0 });
-  return memoize(`zerion:${address}`, 90_000, () => rawZerion(address, apiKey));
+  // Extend the stale window to 2h: a brief Zerion 429 storm shouldn't flash
+  // "unavailable" on the dashboard if we have any recent value to fall back on.
+  return memoize(`zerion:${address}`, 90_000, () => rawZerion(address, apiKey), {
+    maxStaleMs: 2 * 60 * 60 * 1000,
+  });
 }

@@ -84,11 +84,12 @@ export async function computePortfolio(): Promise<PortfolioData & { warnings: st
   ]);
 
   // Zerion rate-limits aggressively on the free tier — serialize the two
-  // address calls with a small gap so back-to-back refreshes are less likely
-  // to get the second request throttled. Sui uses a separate RPC + CoinGecko,
-  // so we fire it in parallel with the second Zerion call.
+  // address calls with a gap so back-to-back refreshes are less likely to get
+  // the second request throttled. ~900ms empirically avoids the burst cap for
+  // Phantom (Solana) that we'd previously see 429s on. Sui uses a separate
+  // RPC + CoinGecko, so we fire it in parallel with the second Zerion call.
   const rabby = await safeZerion("Rabby", cfg.evm_address, zerionKey, warnings);
-  if (cfg.evm_address && cfg.solana_address) await sleep(400);
+  if (cfg.evm_address && cfg.solana_address) await sleep(900);
   const [phantomSol, phantomSui] = await Promise.all([
     safeZerion("Phantom (Solana)", cfg.solana_address, zerionKey, warnings),
     safeSui("Phantom (Sui)", cfg.sui_address, warnings),
