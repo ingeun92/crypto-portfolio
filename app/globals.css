@@ -11,9 +11,10 @@
     height: 100%;
   }
   body {
-    font-feature-settings: "ss01", "cv11";
+    font-feature-settings: "cv11";
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+    -webkit-text-size-adjust: 100%;
   }
 }
 
@@ -24,12 +25,24 @@
     font-feature-settings: "tnum";
   }
   .display {
-    font-family: var(--font-serif), Georgia, serif;
-    font-feature-settings: "tnum", "ss01";
-    font-variant-numeric: tabular-nums;
-    letter-spacing: -0.02em;
+    font-family: var(--font-serif), "Times New Roman", Georgia, serif;
+    font-feature-settings: "tnum", "lnum";
+    font-variant-numeric: tabular-nums lining-nums;
+    font-weight: 500;
+    letter-spacing: -0.025em;
+  }
+  .display-tight {
+    font-family: var(--font-serif), "Times New Roman", Georgia, serif;
+    font-feature-settings: "tnum", "lnum";
+    font-variant-numeric: tabular-nums lining-nums;
+    font-weight: 500;
+    letter-spacing: -0.035em;
   }
   .tracking-widest-tight {
     letter-spacing: 0.2em;
+  }
+  .safe-x {
+    padding-left: max(1.25rem, env(safe-area-inset-left));
+    padding-right: max(1.25rem, env(safe-area-inset-right));
   }
 }

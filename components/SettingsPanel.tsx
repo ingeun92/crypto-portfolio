@@ -69,10 +69,10 @@ export function SettingsPanel({ config, onClose }: Props) {
       aria-modal="true"
     >
       <aside
-        className="h-dvh w-full max-w-md bg-paper border-l border-rule p-8 overflow-y-auto"
+        className="h-dvh w-full max-w-md bg-paper border-l border-rule px-5 py-6 sm:p-8 overflow-y-auto pb-[max(1.5rem,env(safe-area-inset-bottom))]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-baseline justify-between mb-10">
+        <div className="flex items-baseline justify-between mb-8 sm:mb-10">
           <h2 className="text-[11px] uppercase tracking-[0.25em]">Settings</h2>
           <button
             onClick={onClose}
