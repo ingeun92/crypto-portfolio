@@ -62,17 +62,24 @@ async function rawZerion(address: string, apiKey: string, chainId?: string): Pro
 
 function parseZerionResponse(j: any): ZerionResult {
   const rows: any[] = Array.isArray(j?.data) ? j.data : [];
-  const positions: ZerionPosition[] = rows.map((p) => {
-    const attrs = p?.attributes ?? {};
-    const fi = attrs.fungible_info ?? {};
-    const value = Number(attrs.value ?? 0);
-    const qty = Number(attrs.quantity?.numeric ?? 0);
-    return {
-      symbol: String(fi.symbol ?? "").toUpperCase(),
-      valueUsd: Number.isFinite(value) ? value : 0,
-      quantity: Number.isFinite(qty) ? qty : 0,
-    };
-  });
+  // Drop unverified fungibles. Zerion's `only_non_trash` filter still lets
+  // through spoofed airdrops (e.g. a "JupEarnᥘio" / JUPE Solana token with a
+  // bogus four-figure price) because Zerion hasn't classified them as trash
+  // yet. Any real holding we care about on Solana/EVM is flagged verified=true
+  // — combined unverified value on the user's EVM wallet is under $10.
+  const positions: ZerionPosition[] = rows
+    .filter((p) => p?.attributes?.fungible_info?.flags?.verified === true)
+    .map((p) => {
+      const attrs = p?.attributes ?? {};
+      const fi = attrs.fungible_info ?? {};
+      const value = Number(attrs.value ?? 0);
+      const qty = Number(attrs.quantity?.numeric ?? 0);
+      return {
+        symbol: String(fi.symbol ?? "").toUpperCase(),
+        valueUsd: Number.isFinite(value) ? value : 0,
+        quantity: Number.isFinite(qty) ? qty : 0,
+      };
+    });
   const totalUsd = positions.reduce((a, b) => a + b.valueUsd, 0);
   return { totalUsd, positions };
 }
