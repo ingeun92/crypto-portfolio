@@ -188,11 +188,6 @@ export function Dashboard({ data, error, config, history }: Props) {
           <footer className="mx-auto max-w-5xl safe-x sm:px-6 py-6 sm:py-8 border-t border-rule text-[11px] text-muted flex flex-col sm:flex-row sm:justify-between gap-2 sm:gap-4">
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
               <span>
-                <span className="uppercase tracking-[0.15em]">MEGA</span>{" "}
-                <span className="num text-ink">${data.megaPriceUsd.toFixed(4)}</span>
-              </span>
-              <span className="hidden sm:inline">·</span>
-              <span>
                 <span className="uppercase tracking-[0.15em]">STABLE</span>{" "}
                 <span className="num text-ink">${data.stablePriceUsd.toFixed(6)}</span>
               </span>

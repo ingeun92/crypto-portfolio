@@ -5,7 +5,6 @@ export type Config = {
   solana_address: string | null;
   sui_address: string | null;
   stable_qty: number;
-  mega_qty: number;
   updated_at: string;
 };
 
@@ -21,7 +20,6 @@ export type PortfolioData = {
   totalUsd: number;
   totalKrw: number;
   usdKrwRate: number;
-  megaPriceUsd: number;
   stablePriceUsd: number;
   breakdown: PlatformBreakdown[];
   totalDepositKrw: number;

@@ -22,7 +22,6 @@ export async function GET(req: NextRequest) {
         total_usd: data.totalUsd,
         total_krw: data.totalKrw,
         usd_krw_rate: data.usdKrwRate,
-        mega_price_usd: data.megaPriceUsd,
         stable_price_usd: data.stablePriceUsd,
         breakdown: data.breakdown,
       },

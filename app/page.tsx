@@ -14,7 +14,6 @@ const FALLBACK_CONFIG: Config = {
   solana_address: null,
   sui_address: null,
   stable_qty: 0,
-  mega_qty: 0,
   updated_at: new Date().toISOString(),
 };
 

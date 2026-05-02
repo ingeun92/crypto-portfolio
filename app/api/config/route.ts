@@ -19,7 +19,6 @@ const ALLOWED_KEYS = [
   "solana_address",
   "sui_address",
   "stable_qty",
-  "mega_qty",
 ] as const;
 
 export async function PATCH(req: NextRequest) {

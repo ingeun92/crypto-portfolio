@@ -23,7 +23,6 @@ const CONFIG_DEFAULT: Omit<Config, "updated_at"> = {
   solana_address: null,
   sui_address: null,
   stable_qty: 0,
-  mega_qty: 0,
 };
 
 /**

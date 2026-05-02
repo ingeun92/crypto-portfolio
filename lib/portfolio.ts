@@ -1,5 +1,5 @@
 import { getOrCreateConfig } from "./supabase";
-import { fetchMegaPriceUsd, fetchStablePriceUsd, fetchUsdKrw } from "./prices";
+import { fetchStablePriceUsd, fetchUsdKrw } from "./prices";
 import { zerionPortfolio, type ZerionResult } from "./zerion";
 import { suiPortfolio, type SuiResult } from "./sui";
 import { sleep } from "./cache";
@@ -78,8 +78,7 @@ export async function computePortfolio(): Promise<PortfolioData & { warnings: st
   const warnings: string[] = [];
 
   // Prices and FX can run in parallel (different hosts, no shared quota).
-  const [megaPrice, stablePrice, usdKrw] = await Promise.all([
-    safePrice("MEGA price", fetchMegaPriceUsd, warnings),
+  const [stablePrice, usdKrw] = await Promise.all([
     safePrice("STABLE price", fetchStablePriceUsd, warnings),
     safePrice("USD/KRW", fetchUsdKrw, warnings),
   ]);
@@ -96,14 +95,8 @@ export async function computePortfolio(): Promise<PortfolioData & { warnings: st
     safeSui("Phantom (Sui)", cfg.sui_address, warnings),
   ]);
 
-  // Remove any MEGA position from Rabby total so we don't double-count — we
-  // add a fresh MEGA valuation from Bybit's live price below.
-  const megaInRabby = rabby.result.positions
-    .filter((p) => p.symbol === "MEGA")
-    .reduce((a, b) => a + b.valueUsd, 0);
-  const rabbyNetUsd = Math.max(0, rabby.result.totalUsd - megaInRabby);
+  const rabbyNetUsd = rabby.result.totalUsd;
 
-  const megaValueUsd = Number(cfg.mega_qty) * megaPrice;
   const stableValueUsd = Number(cfg.stable_qty) * stablePrice;
 
   // Phantom holds both Solana (via Zerion) and Sui (via Sui RPC + CoinGecko).
@@ -118,8 +111,7 @@ export async function computePortfolio(): Promise<PortfolioData & { warnings: st
 
   type Part = { label: string; valueUsd: number; unavailable: boolean };
   const parts: Part[] = [
-    { label: "Rabby (Net)", valueUsd: rabbyNetUsd, unavailable: rabby.unavailable },
-    { label: "$MEGA · MegaETH", valueUsd: megaValueUsd, unavailable: false },
+    { label: "Rabby", valueUsd: rabbyNetUsd, unavailable: rabby.unavailable },
     { label: "Phantom", valueUsd: phantomValueUsd, unavailable: phantomUnavailable },
     { label: "Bybit · $STABLE", valueUsd: stableValueUsd, unavailable: false },
   ];
@@ -148,7 +140,6 @@ export async function computePortfolio(): Promise<PortfolioData & { warnings: st
     totalUsd: availableTotalUsd,
     totalKrw,
     usdKrwRate: usdKrw,
-    megaPriceUsd: megaPrice,
     stablePriceUsd: stablePrice,
     breakdown,
     totalDepositKrw: deposit,

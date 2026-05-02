@@ -14,7 +14,6 @@ type FormState = {
   solana_address: string;
   sui_address: string;
   stable_qty: string;
-  mega_qty: string;
 };
 
 export function SettingsPanel({ config, onClose }: Props) {
@@ -24,7 +23,6 @@ export function SettingsPanel({ config, onClose }: Props) {
     solana_address: config.solana_address ?? "",
     sui_address: config.sui_address ?? "",
     stable_qty: String(config.stable_qty ?? 0),
-    mega_qty: String(config.mega_qty ?? 0),
   });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -43,7 +41,6 @@ export function SettingsPanel({ config, onClose }: Props) {
         solana_address: form.solana_address.trim() || null,
         sui_address: form.sui_address.trim() || null,
         stable_qty: Number(form.stable_qty) || 0,
-        mega_qty: Number(form.mega_qty) || 0,
       };
       const r = await fetch("/api/config", {
         method: "PATCH",
@@ -122,12 +119,6 @@ export function SettingsPanel({ config, onClose }: Props) {
               onChange={(v) => set("stable_qty", v)}
               type="number"
             />
-            <Field
-              label="$MEGA Quantity · MegaETH"
-              value={form.mega_qty}
-              onChange={(v) => set("mega_qty", v)}
-              type="number"
-            />
           </Section>
         </div>
 
@@ -142,8 +133,8 @@ export function SettingsPanel({ config, onClose }: Props) {
         </button>
 
         <p className="mt-8 text-[10px] text-muted leading-relaxed">
-          주소를 저장하면 Zerion API를 통해 자동으로 잔고가 집계됩니다. 고정 수량은 Bybit($STABLE) 및 Rabby의
-          $MEGA 가치를 실시간 가격으로 재계산할 때 사용됩니다.
+          주소를 저장하면 Zerion API를 통해 자동으로 잔고가 집계됩니다. 고정 수량은 Bybit의 $STABLE 가치를 실시간
+          가격으로 재계산할 때 사용됩니다.
         </p>
       </aside>
     </div>

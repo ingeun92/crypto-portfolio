@@ -7,17 +7,6 @@ import { memoize } from "./cache";
 const UA = "Mozilla/5.0 (compatible; crypto-portfolio/1.0)";
 const fetchOpts = { cache: "no-store" as const, headers: { "User-Agent": UA, Accept: "application/json" } };
 
-async function rawMega(): Promise<number> {
-  const url = "https://api.bybit.com/v5/market/tickers?category=linear&symbol=MEGAUSDT";
-  const r = await fetch(url, fetchOpts);
-  if (!r.ok) throw new Error(`Bybit MEGA HTTP ${r.status}`);
-  const j = await r.json();
-  if (j?.retCode !== 0) throw new Error(`Bybit MEGA retCode ${j?.retCode}: ${j?.retMsg}`);
-  const last = j?.result?.list?.[0]?.lastPrice;
-  if (!last) throw new Error("Bybit MEGA empty result");
-  return Number(last);
-}
-
 async function rawStable(): Promise<number> {
   const url = "https://api.coingecko.com/api/v3/simple/price?ids=stable-2&vs_currencies=usd";
   const r = await fetch(url, fetchOpts);
@@ -37,6 +26,5 @@ async function rawFx(): Promise<number> {
   return Number(krw);
 }
 
-export const fetchMegaPriceUsd = () => memoize("mega-price", 30_000, rawMega);
 export const fetchStablePriceUsd = () => memoize("stable-price", 30_000, rawStable);
 export const fetchUsdKrw = () => memoize("usd-krw", 5 * 60_000, rawFx);

@@ -6,13 +6,16 @@ create table if not exists config (
   solana_address text,
   sui_address text,
   stable_qty numeric not null default 0,
-  mega_qty numeric not null default 0,
   updated_at timestamptz not null default now(),
   constraint config_singleton check (id = 1)
 );
 
 -- Additive migration for pre-existing deployments that predate sui_address.
 alter table config add column if not exists sui_address text;
+-- MEGA airdrop has shipped; the token now flows through Rabby's Zerion feed,
+-- so the manual quantity column is no longer used.
+alter table config drop column if exists mega_qty;
+alter table snapshots drop column if exists mega_price_usd;
 
 insert into config (id) values (1) on conflict do nothing;
 
@@ -24,7 +27,6 @@ create table if not exists snapshots (
   total_usd numeric not null,
   total_krw numeric not null,
   usd_krw_rate numeric not null,
-  mega_price_usd numeric,
   stable_price_usd numeric,
   breakdown jsonb not null,
   created_at timestamptz not null default now()
