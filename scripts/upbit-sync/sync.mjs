@@ -11,11 +11,22 @@
 //   SYNC_URL            https://<your-app>/api/upbit/sync
 //   UPBIT_SYNC_SECRET   must match the same env var on the dashboard
 //
+// Optional:
+//   UPBIT_CURRENCIES    comma-separated whitelist, e.g. "KRW,BTC,ETH".
+//                       Unset means send everything. Delisted coins linger in
+//                       the account as dust (1e-8 balances) that cannot be
+//                       priced; a whitelist keeps them out of the dashboard.
+//
 // See README.md for VM setup and cron registration.
 
 import { createHmac, randomUUID } from "node:crypto";
 
 const { UPBIT_ACCESS_KEY, UPBIT_SECRET_KEY, SYNC_URL, UPBIT_SYNC_SECRET } = process.env;
+
+const ALLOWED = (process.env.UPBIT_CURRENCIES ?? "")
+  .split(",")
+  .map((s) => s.trim().toUpperCase())
+  .filter(Boolean);
 
 for (const [name, value] of Object.entries({
   UPBIT_ACCESS_KEY,
@@ -103,7 +114,16 @@ async function fetchAccounts() {
   if (!Array.isArray(accounts) || accounts.length === 0) {
     throw permanent("Upbit returned no accounts — refusing to push an empty payload");
   }
-  return accounts;
+  if (ALLOWED.length === 0) return accounts;
+
+  const kept = accounts.filter((a) => ALLOWED.includes(String(a?.currency ?? "").toUpperCase()));
+  if (kept.length === 0) {
+    throw permanent(
+      `UPBIT_CURRENCIES (${ALLOWED.join(",")}) matched none of the held currencies ` +
+        `(${accounts.map((a) => a?.currency).join(",")}) — refusing to wipe the dashboard`,
+    );
+  }
+  return kept;
 }
 
 async function push(accounts) {
@@ -138,7 +158,8 @@ async function push(accounts) {
 try {
   const accounts = await withRetry("fetch", fetchAccounts);
   await withRetry("push", () => push(accounts));
-  console.log(`[upbit-sync] ${new Date().toISOString()} synced ${accounts.length} balances`);
+  const which = accounts.map((a) => a.currency).join(",");
+  console.log(`[upbit-sync] ${new Date().toISOString()} synced ${accounts.length} balances (${which})`);
 } catch (e) {
   console.error(`[upbit-sync] failed: ${describeError(e)}`);
   process.exit(1);

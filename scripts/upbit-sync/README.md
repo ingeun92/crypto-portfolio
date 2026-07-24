@@ -2,15 +2,18 @@
 
 업비트 인증 API는 **API 키에 등록된 허용 IP에서만** 호출할 수 있는데, Vercel은 egress IP가 고정되지 않습니다.
 그래서 고정 IP를 가진 작은 머신이 잔고(수량)만 주기적으로 읽어 대시보드로 밀어 넣고, **가격은 Vercel이
-업비트 public API로 실시간 조회**합니다. 시세는 앱이 처리하므로 이 워커는 1시간에 한 번만 돌면 충분합니다.
+업비트 public API로 실시간 조회**합니다. 시세는 앱이 처리하므로 워커는 하루 한 번, 야간 스냅샷 직전에만
+돌면 충분합니다.
 
 ```
-[Oracle VM · 고정 IP]  cron 매시 정각
+[Oracle VM · 고정 IP]  cron 매일 14:30 UTC (23:30 KST)
    GET /v1/accounts (JWT 인증)
         ↓ POST /api/upbit/sync
    Supabase: upbit_balances
         ↓
 [Vercel]  수량 읽기 + GET /v1/ticker (인증 불필요) → 실시간 평가액
+        ↓ 15:05 UTC (00:05 KST)
+   일별 스냅샷에 반영
 ```
 
 API 시크릿은 이 워커에만 존재합니다. Vercel 환경변수나 브라우저에는 절대 올라가지 않습니다.
@@ -78,7 +81,12 @@ UPBIT_ACCESS_KEY=발급받은-access-key
 UPBIT_SECRET_KEY=발급받은-secret-key
 SYNC_URL=https://<배포된-도메인>/api/upbit/sync
 UPBIT_SYNC_SECRET=2단계에서-만든-hex
+UPBIT_CURRENCIES=KRW,BTC,ETH
 ```
+
+`UPBIT_CURRENCIES`는 수집할 통화 화이트리스트입니다. 상장폐지된 코인이 `1e-8` 같은 dust로 계정에 남아
+평가 불가 경고를 유발하는데, 이 목록으로 걸러냅니다. **원화 예수금(`KRW`)도 자산이므로 반드시 포함**하세요.
+새 종목을 매수하면 이 줄에 추가만 하면 되고 앱 재배포는 필요 없습니다. 비워두면 전체를 수집합니다.
 
 ```bash
 chmod 600 ~/upbit-sync/.env
@@ -108,10 +116,15 @@ crontab -e
 ```
 
 ```cron
-0 * * * * /home/ubuntu/upbit-sync/run.sh >> /home/ubuntu/upbit-sync/sync.log 2>&1
+30 14 * * * /home/ubuntu/upbit-sync/run.sh >> /home/ubuntu/upbit-sync/sync.log 2>&1
 ```
 
-매시 정각에 동기화됩니다. 매매 직후 바로 반영하고 싶으면 `./run.sh`를 수동 실행하면 됩니다.
+VM은 UTC라 매일 **14:30 UTC = 23:30 KST**에 동기화됩니다. 일별 스냅샷이 15:05 UTC(00:05 KST)에 저장되므로
+35분 여유를 두어 실패 시 재시도할 시간을 확보한 것입니다. 매수 직후 바로 반영하고 싶으면 `./run.sh`를
+수동 실행하면 됩니다.
+
+수량은 하루에 한 번만 갱신되지만 **시세는 대시보드를 열 때마다 실시간**이라, 평가액 오차는 매수 직후부터
+그날 밤 동기화까지만 발생합니다.
 
 ---
 
@@ -136,9 +149,10 @@ VM의 `.env` 값과 Vercel 환경변수가 다릅니다. Vercel에서 값을 바
 
 워커가 아직 한 번도 성공하지 못한 상태입니다. `~/upbit-sync/sync.log`를 확인하세요.
 
-**대시보드에 `Upbit: balances last synced 5h old`**
+**대시보드에 `Upbit: balances last synced 31h old`**
 
-cron이 멈췄거나 VM이 내려간 상태입니다. 표시되는 값은 마지막으로 동기화된 수량 기준입니다.
+하루 한 번 동기화라 30시간을 넘겨야 경고가 뜹니다. 즉 어젯밤 실행이 실패했다는 뜻이니 cron과
+`sync.log`를 확인하세요. 표시되는 값은 마지막으로 동기화된 수량 기준입니다.
 
 **대시보드에 `Upbit: no KRW market for XXX — excluded`**
 

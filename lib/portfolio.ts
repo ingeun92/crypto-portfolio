@@ -73,9 +73,10 @@ async function safeSui(
   }
 }
 
-// The sync worker runs hourly; three hours without a write means it is wedged
-// or the VM is down, and the quantities we're valuing may no longer be real.
-const UPBIT_STALE_MS = 3 * 60 * 60_000;
+// The sync worker runs once a day, shortly before the nightly snapshot, so
+// balances are routinely up to 24h old. Warn only past that — a missed run
+// means the VM or cron is wedged and the quantities may no longer be real.
+const UPBIT_STALE_MS = 30 * 60 * 60_000;
 
 async function safeUpbit(
   label: string,
