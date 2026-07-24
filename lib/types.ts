@@ -22,7 +22,12 @@ export type PortfolioData = {
   usdKrwRate: number;
   stablePriceUsd: number;
   breakdown: PlatformBreakdown[];
+  /** Seed outside Upbit (manual) plus Upbit seed (derived). */
   totalDepositKrw: number;
+  /** The manually entered part — everything except Upbit. */
+  depositBaseKrw: number;
+  /** Derived from Upbit cost basis + cash; 0 when Upbit is unavailable. */
+  upbitSeedKrw: number;
   profitKrw: number;
   profitPct: number;
 };

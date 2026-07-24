@@ -82,11 +82,14 @@ export function SettingsPanel({ config, onClose }: Props) {
         <div className="space-y-8">
           <Section title="Deposit">
             <Field
-              label="Total Deposit (KRW)"
+              label="Total Deposit · 업비트 제외 (KRW)"
               value={form.total_deposit_krw}
               onChange={(v) => set("total_deposit_krw", v)}
               type="number"
             />
+            <p className="text-[10px] text-muted leading-relaxed">
+              업비트에 넣은 돈은 여기에 넣지 마세요. 매수 평단가와 예수금에서 자동으로 계산되어 더해집니다.
+            </p>
           </Section>
 
           <Section title="Wallets">

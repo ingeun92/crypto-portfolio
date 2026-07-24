@@ -100,6 +100,11 @@ export function Dashboard({ data, error, config, history }: Props) {
                   vs deposit
                 </div>
                 <div className="mt-1 num text-[13px] sm:text-sm">{fmtKrw(data.totalDepositKrw)}</div>
+                {data.upbitSeedKrw > 0 && (
+                  <div className="mt-1 num text-[10px] text-muted">
+                    {fmtKrw(data.depositBaseKrw)} + Upbit {fmtKrw(data.upbitSeedKrw)}
+                  </div>
+                )}
               </div>
             </div>
           </section>

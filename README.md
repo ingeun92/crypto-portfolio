@@ -94,8 +94,15 @@ vercel --prod
 | Upbit | `Σ (balance + locked) × Upbit KRW 마켓 현재가 ÷ USD/KRW` (KRW 잔고는 액면가) |
 | Bybit · $STABLE | `stable_qty × CoinGecko(stable-2) 가격` |
 | **Total (KRW)** | `sum(USD) × open.er-api.com KRW rate` |
+| 입금 | `total_deposit_krw(업비트 외 수동) + 업비트 시드(자동)` |
+| 업비트 시드 | `Σ(avg_buy_price × 수량) + KRW 예수금` |
 | 수익 | `총 KRW − 총 입금 KRW` |
 | 수익률 | `수익 / 입금 × 100` |
+
+업비트 시드를 매수 원가와 예수금에서 유도하는 이유: 업비트에 들어간 돈은 코인이 되었거나 예수금으로
+남아 있으므로, **매수만 하는 동안에는 이 합이 순입금액과 정확히 일치**한다. DCA 매수를 해도 입금액을
+손으로 고칠 필요가 없다. 단 매도하면 실현손익이 예수금에 섞여 시드가 부풀려지므로, 매도를 시작하면
+입출금 조회 권한이 있는 키로 실제 입금 내역을 집계하는 방식으로 바꿔야 한다.
 
 업비트만 KRW 기준이라 USD로 환산해 합산합니다. USD/KRW를 못 받아오면 잘못된 값을 더하지 않도록
 해당 플랫폼을 `unavailable`로 처리합니다. `locked`(미체결 주문에 묶인 수량)도 보유 자산이므로 포함합니다.

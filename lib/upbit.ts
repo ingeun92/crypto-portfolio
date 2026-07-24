@@ -14,6 +14,14 @@ export type UpbitPosition = {
 export type UpbitResult = {
   totalKrw: number;
   positions: UpbitPosition[];
+  /**
+   * KRW wired into Upbit: what the coins cost plus cash not yet deployed.
+   * With buy-only activity this equals net deposits exactly — every won that
+   * entered either bought a coin (captured by avg_buy_price) or is still
+   * sitting as cash. Selling would break the identity, since realized gains
+   * would land in cash while the cost basis disappears.
+   */
+  costBasisKrw: number;
   /** Newest `updated_at` across balance rows; null when nothing synced yet. */
   syncedAt: string | null;
   /** Currencies held but not priceable on a KRW market — excluded from totals. */
@@ -24,6 +32,7 @@ type BalanceRow = {
   currency: string;
   balance: number | string;
   locked: number | string;
+  avg_buy_price: number | string;
   updated_at: string;
 };
 
@@ -74,7 +83,7 @@ async function readBalances(): Promise<BalanceRow[]> {
   const sb = supabaseAdmin();
   const { data, error } = await sb
     .from("upbit_balances")
-    .select("currency,balance,locked,updated_at");
+    .select("currency,balance,locked,avg_buy_price,updated_at");
   if (error) throw new Error(`upbit_balances read failed: ${error.message}`);
   return (data ?? []) as BalanceRow[];
 }
@@ -89,7 +98,7 @@ async function readBalances(): Promise<BalanceRow[]> {
 export async function upbitPortfolio(): Promise<UpbitResult> {
   const rows = await readBalances();
   if (rows.length === 0) {
-    return { totalKrw: 0, positions: [], syncedAt: null, unpriced: [] };
+    return { totalKrw: 0, positions: [], costBasisKrw: 0, syncedAt: null, unpriced: [] };
   }
 
   const syncedAt = rows.reduce(
@@ -98,6 +107,7 @@ export async function upbitPortfolio(): Promise<UpbitResult> {
   );
 
   let totalKrw = 0;
+  let costBasisKrw = 0;
   const positions: UpbitPosition[] = [];
   const unpriced: string[] = [];
   const coins: { currency: string; quantity: number }[] = [];
@@ -107,9 +117,14 @@ export async function upbitPortfolio(): Promise<UpbitResult> {
     if (!Number.isFinite(quantity) || quantity <= 0) continue;
     if (r.currency === "KRW") {
       totalKrw += quantity;
+      costBasisKrw += quantity;
       positions.push({ currency: "KRW", quantity, valueKrw: quantity });
       continue;
     }
+    // Cost basis counts every held coin, including ones we cannot price — the
+    // won spent on them left the user's pocket either way.
+    const avg = Number(r.avg_buy_price);
+    if (Number.isFinite(avg) && avg > 0) costBasisKrw += quantity * avg;
     coins.push({ currency: r.currency, quantity });
   }
 
@@ -139,5 +154,5 @@ export async function upbitPortfolio(): Promise<UpbitResult> {
   }
 
   positions.sort((a, b) => b.valueKrw - a.valueKrw);
-  return { totalKrw, positions, syncedAt, unpriced };
+  return { totalKrw, positions, costBasisKrw, syncedAt, unpriced };
 }
