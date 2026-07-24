@@ -77,6 +77,17 @@ function fetchSuiCoinMap() {
   return memoize("sui-coin-map", 6 * 60 * 60 * 1000, rawCoinMap);
 }
 
+// Coin metadata (decimals, symbol) is immutable per coin type, so cache it hard
+// and skip a per-coin RPC round-trip on every 90s refresh. Falls back to null
+// when the endpoint has never succeeded, matching the previous behavior.
+function fetchCoinMetadata(coinType: string): Promise<RpcMetadata> {
+  return memoize(`sui-meta:${coinType}`, 6 * 60 * 60 * 1000, () =>
+    rpc<RpcMetadata>("suix_getCoinMetadata", [coinType]),
+  )
+    .then((r) => r.value)
+    .catch(() => null);
+}
+
 async function fetchPricesByIds(ids: string[]): Promise<Record<string, number>> {
   if (ids.length === 0) return {};
   const url =
@@ -104,9 +115,7 @@ async function rawSui(address: string): Promise<SuiResult> {
   if (nonZero.length === 0) return { totalUsd: 0, positions: [] };
 
   const [metas, coinMapRes] = await Promise.all([
-    Promise.all(
-      nonZero.map((b) => rpc<RpcMetadata>("suix_getCoinMetadata", [b.coinType]).catch(() => null)),
-    ),
+    Promise.all(nonZero.map((b) => fetchCoinMetadata(b.coinType))),
     fetchSuiCoinMap(),
   ]);
   const coinMap = coinMapRes.value;

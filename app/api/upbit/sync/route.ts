@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
+import { constantTimeEqual } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,7 +28,7 @@ function num(v: unknown): number {
 export async function POST(req: NextRequest) {
   const auth = req.headers.get("authorization");
   const expected = `Bearer ${process.env.UPBIT_SYNC_SECRET}`;
-  if (!process.env.UPBIT_SYNC_SECRET || auth !== expected) {
+  if (!process.env.UPBIT_SYNC_SECRET || !constantTimeEqual(auth ?? "", expected)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 

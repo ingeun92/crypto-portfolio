@@ -1,5 +1,10 @@
 export const COOKIE_NAME = "cp_session";
 
+// Server-side token lifetime. Mirrors the cookie's maxAge so an in-window
+// cookie stays valid, but — unlike the cookie's client-side expiry — this is
+// enforced on verify, so a captured token can't outlive the window.
+export const TOKEN_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
 const encoder = new TextEncoder();
 
 async function hmacHex(secret: string, data: string): Promise<string> {
@@ -33,7 +38,13 @@ export async function verifyToken(token: string | undefined, secret: string): Pr
   if (expected.length !== sig.length) return false;
   let diff = 0;
   for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ sig.charCodeAt(i);
-  return diff === 0;
+  if (diff !== 0) return false;
+
+  // Signature is valid — now enforce freshness. The timestamp is HMAC-covered,
+  // so it can't be forged; a stale (or non-numeric) one means an expired token.
+  const issuedAt = Number(ts);
+  if (!Number.isFinite(issuedAt)) return false;
+  return Date.now() - issuedAt < TOKEN_MAX_AGE_MS;
 }
 
 export function constantTimeEqual(a: string, b: string): boolean {

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { computePortfolio } from "@/lib/portfolio";
 import { supabaseAdmin } from "@/lib/supabase";
+import { constantTimeEqual } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,7 +9,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const auth = req.headers.get("authorization");
   const expected = `Bearer ${process.env.CRON_SECRET}`;
-  if (!process.env.CRON_SECRET || auth !== expected) {
+  if (!process.env.CRON_SECRET || !constantTimeEqual(auth ?? "", expected)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 

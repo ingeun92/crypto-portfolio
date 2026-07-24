@@ -6,7 +6,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const from = params.get("from") ?? "/";
+  // Only allow same-origin relative paths — reject "//evil.com" and absolute
+  // URLs so ?from= can't turn the login into an open redirect.
+  const fromRaw = params.get("from") ?? "/";
+  const from = fromRaw.startsWith("/") && !fromRaw.startsWith("//") ? fromRaw : "/";
   const [pw, setPw] = useState("");
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
