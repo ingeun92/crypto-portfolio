@@ -1,7 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { COOKIE_NAME, verifyToken } from "@/lib/auth";
 
-const PUBLIC_PREFIXES = ["/login", "/api/auth", "/api/cron"];
+// /api/upbit/sync is machine-to-machine (the fixed-IP worker has no session
+// cookie); it guards itself with a Bearer secret, same as /api/cron.
+const PUBLIC_PREFIXES = ["/login", "/api/auth", "/api/cron", "/api/upbit/sync"];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;

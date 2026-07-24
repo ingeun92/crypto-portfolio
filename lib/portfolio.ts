@@ -2,6 +2,7 @@ import { getOrCreateConfig } from "./supabase";
 import { fetchStablePriceUsd, fetchUsdKrw } from "./prices";
 import { zerionPortfolio, type ZerionResult } from "./zerion";
 import { suiPortfolio, type SuiResult } from "./sui";
+import { upbitPortfolio, type UpbitResult } from "./upbit";
 import { sleep } from "./cache";
 import type { PortfolioData, PlatformBreakdown } from "./types";
 
@@ -72,6 +73,37 @@ async function safeSui(
   }
 }
 
+// The sync worker runs hourly; three hours without a write means it is wedged
+// or the VM is down, and the quantities we're valuing may no longer be real.
+const UPBIT_STALE_MS = 3 * 60 * 60_000;
+
+async function safeUpbit(
+  label: string,
+  warnings: string[],
+): Promise<{ result: UpbitResult; unavailable: boolean }> {
+  try {
+    const result = await upbitPortfolio();
+    if (!result.syncedAt) {
+      warnings.push(`${label}: no synced balances yet — run the sync worker`);
+      return { result, unavailable: true };
+    }
+    const ageMs = Date.now() - Date.parse(result.syncedAt);
+    if (Number.isFinite(ageMs) && ageMs > UPBIT_STALE_MS) {
+      warnings.push(`${label}: balances last synced ${describeAge(ageMs)}`);
+    }
+    if (result.unpriced.length > 0) {
+      warnings.push(`${label}: no KRW market for ${result.unpriced.join(", ")} — excluded`);
+    }
+    return { result, unavailable: false };
+  } catch (e: any) {
+    warnings.push(`${label}: ${String(e?.message ?? e)}`);
+    return {
+      result: { totalKrw: 0, positions: [], syncedAt: null, unpriced: [] },
+      unavailable: true,
+    };
+  }
+}
+
 export async function computePortfolio(): Promise<PortfolioData & { warnings: string[] }> {
   const cfg = await getOrCreateConfig();
   const zerionKey = process.env.ZERION_API_KEY ?? "";
@@ -90,9 +122,10 @@ export async function computePortfolio(): Promise<PortfolioData & { warnings: st
   // RPC + CoinGecko, so we fire it in parallel with the second Zerion call.
   const rabby = await safeZerion("Rabby", cfg.evm_address, zerionKey, warnings);
   if (cfg.evm_address && cfg.solana_address) await sleep(900);
-  const [phantomSol, phantomSui] = await Promise.all([
+  const [phantomSol, phantomSui, upbit] = await Promise.all([
     safeZerion("Phantom (Solana)", cfg.solana_address, zerionKey, warnings, "solana"),
     safeSui("Phantom (Sui)", cfg.sui_address, warnings),
+    safeUpbit("Upbit", warnings),
   ]);
 
   const rabbyNetUsd = rabby.result.totalUsd;
@@ -109,10 +142,18 @@ export async function computePortfolio(): Promise<PortfolioData & { warnings: st
     (phantomHasSol ? phantomSol.result.totalUsd : 0) + (phantomHasSui ? phantomSui.result.totalUsd : 0);
   const phantomUnavailable = !phantomConfigured || (!phantomHasSol && !phantomHasSui);
 
+  // Upbit is KRW-native while the rest of the pipeline is USD-first, so convert
+  // here. Without a live FX rate the conversion is meaningless — mark the
+  // platform unavailable rather than folding a bogus number into the total.
+  const upbitFxMissing = !upbit.unavailable && usdKrw <= 0;
+  if (upbitFxMissing) warnings.push("Upbit: no USD/KRW rate — value omitted");
+  const upbitValueUsd = usdKrw > 0 ? upbit.result.totalKrw / usdKrw : 0;
+
   type Part = { label: string; valueUsd: number; unavailable: boolean };
   const parts: Part[] = [
     { label: "Rabby", valueUsd: rabbyNetUsd, unavailable: rabby.unavailable },
     { label: "Phantom", valueUsd: phantomValueUsd, unavailable: phantomUnavailable },
+    { label: "Upbit", valueUsd: upbitValueUsd, unavailable: upbit.unavailable || upbitFxMissing },
     { label: "Bybit · $STABLE", valueUsd: stableValueUsd, unavailable: false },
   ];
 

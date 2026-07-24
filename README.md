@@ -1,14 +1,15 @@
 # crypto-portfolio
 
 스프레드시트 없이 한 페이지로 보는 개인 크립토 자산 대시보드.
-지갑 주소 기반 자동 집계 · Bybit $STABLE 고정수량 · $MEGA 실시간가 재계산 · 일 1회 스냅샷 · 추이 차트.
+지갑 주소 기반 자동 집계 · 업비트 잔고 자동 동기화 · Bybit $STABLE 고정수량 · 일 1회 스냅샷 · 추이 차트.
 
 ## Stack
 
 - Next.js 14 (App Router) + TypeScript + Tailwind CSS
-- Supabase (config 싱글톤 + 일별 snapshots)
-- Zerion API (EVM + Solana 포트폴리오 집계)
-- Bybit public API (`$MEGA` 선물가), CoinGecko (`$STABLE`), open.er-api.com (USD/KRW)
+- Supabase (config 싱글톤 + 일별 snapshots + upbit_balances)
+- Zerion API (EVM + Solana 포트폴리오 집계), Sui RPC (Sui 잔고)
+- Upbit public API (원화 마켓 시세) + 고정 IP 워커의 인증 API 동기화
+- CoinGecko (`$STABLE`), open.er-api.com (USD/KRW)
 - Vercel 배포 + Vercel Cron(일 1회 UTC 15:05 = KST 00:05)
 
 ## Setup
@@ -56,8 +57,8 @@ npm run dev
 - 총 입금 금액 (₩)
 - EVM 주소 (Rabby 연결된 지갑)
 - Solana 주소 (Phantom)
+- Sui 주소 (Phantom)
 - `$STABLE` 수량 (Bybit)
-- `$MEGA` 수량
 
 을 입력하면 즉시 자동 집계됩니다.
 
@@ -72,24 +73,32 @@ vercel env add NEXT_PUBLIC_SUPABASE_URL production
 vercel env add SUPABASE_SERVICE_ROLE_KEY production
 vercel env add ZERION_API_KEY production
 vercel env add CRON_SECRET production
+vercel env add UPBIT_SYNC_SECRET production
 vercel --prod
 ```
 
 `vercel.json`의 `crons` 설정이 자동으로 인식되어 매일 **UTC 15:05 (KST 00:05)** 에 스냅샷이 저장됩니다.
 
+### 6. 업비트 연동 (선택)
+
+업비트 인증 API는 API 키에 등록된 허용 IP에서만 호출할 수 있는데 Vercel은 egress IP가 고정되지 않습니다.
+고정 IP를 가진 머신에서 잔고 수량만 주기적으로 밀어 넣고, 시세는 앱이 public API로 실시간 조회합니다.
+설정 절차는 [`scripts/upbit-sync/README.md`](scripts/upbit-sync/README.md) 참고.
+
 ## 데이터 집계 규칙
 
 | 플랫폼 | 계산식 |
 |---|---|
-| Rabby (Net) | `zerion(EVM 주소).totalUsd − zerion에서 발견된 $MEGA 포지션 가치` |
-| $MEGA · MegaETH | `mega_qty × Bybit MEGAUSDT linear lastPrice` |
-| Phantom | `zerion(Solana 주소).totalUsd` |
+| Rabby | `zerion(EVM 주소).totalUsd` |
+| Phantom | `zerion(Solana 주소).totalUsd + sui(Sui 주소).totalUsd` |
+| Upbit | `Σ (balance + locked) × Upbit KRW 마켓 현재가 ÷ USD/KRW` (KRW 잔고는 액면가) |
 | Bybit · $STABLE | `stable_qty × CoinGecko(stable-2) 가격` |
 | **Total (KRW)** | `sum(USD) × open.er-api.com KRW rate` |
 | 수익 | `총 KRW − 총 입금 KRW` |
 | 수익률 | `수익 / 입금 × 100` |
 
-$MEGA를 Rabby에서 빼고 다시 더하는 이유: Zerion 가격이 부정확해서 사용자가 검증한 **Bybit 선물 가격**으로 재계산하려는 것.
+업비트만 KRW 기준이라 USD로 환산해 합산합니다. USD/KRW를 못 받아오면 잘못된 값을 더하지 않도록
+해당 플랫폼을 `unavailable`로 처리합니다. `locked`(미체결 주문에 묶인 수량)도 보유 자산이므로 포함합니다.
 
 ## 파일 구조
 
@@ -101,6 +110,7 @@ app/
     portfolio/route.ts     실시간 집계 GET
     snapshots/route.ts     이력 조회
     cron/snapshot/route.ts 일 1회 저장 (CRON_SECRET 필요)
+    upbit/sync/route.ts    업비트 잔고 수신 (UPBIT_SYNC_SECRET 필요)
   login/page.tsx           비번 입력 화면
   layout.tsx, page.tsx, globals.css
 components/
@@ -108,11 +118,15 @@ components/
 lib/
   auth.ts       HMAC 서명 쿠키 (Edge 호환)
   supabase.ts   service_role 클라이언트
-  prices.ts     Bybit/CoinGecko/FX fetch
+  prices.ts     CoinGecko/FX fetch
   zerion.ts     포트폴리오 포지션 집계
+  sui.ts        Sui RPC 잔고 + CoinGecko 가격
+  upbit.ts      동기화된 잔고 조회 + 원화 마켓 시세 평가
   portfolio.ts  전체 계산 orchestration
   format.ts     KRW/USD/% 포매터
   types.ts
+scripts/
+  upbit-sync/   고정 IP VM에서 도는 잔고 동기화 워커 (의존성 0)
 middleware.ts   /login, /api/auth, /api/cron 외는 쿠키 확인
 supabase/schema.sql
 vercel.json     cron 설정
@@ -124,9 +138,13 @@ vercel.json     cron 설정
 - Supabase 테이블은 RLS enabled + 정책 없음 → service role만 접근
 - 사이트 전체가 middleware 쿠키 게이트로 보호됨
 - 크론 엔드포인트는 `Authorization: Bearer CRON_SECRET` 검증
+- 업비트 동기화 엔드포인트는 `Authorization: Bearer UPBIT_SYNC_SECRET` 검증
+- 업비트 API 키는 워커 VM에만 존재하고 Vercel·브라우저에는 올라가지 않음. 권한은 **자산조회 전용**
 
 ## 한계 · 개선 여지
 
 - Zerion의 Solana 인덱싱이 드물게 빠르지 않아 Phantom 값이 늦을 수 있음 → 필요 시 Helius로 교체 가능
-- Upbit/Bybit 전체 잔고 API 연동은 현재 미포함 (API 키 필요). 원하면 `lib/exchanges/`에 추가해 `portfolio.ts`에 파트 하나 더 붙이면 됨
-- MEGA는 Bybit linear perpetual 기준. 실제 spot 거래 가격과 차이가 있을 수 있음 (현재 spot 미상장)
+- 업비트 수량은 워커 cron 주기(기본 1시간)만큼 지연됨. 시세는 실시간이라 평가액 오차는 매매 직후에만 발생
+- 업비트 API 키는 유효기간 1년, 연장 불가 → 매년 재발급 후 워커 `.env` 교체 필요
+- 원화 마켓이 없는 종목(BTC 마켓 전용 등)은 평가에서 제외되고 경고로 표시됨
+- Bybit 잔고는 여전히 수동 (`$STABLE` 고정수량)

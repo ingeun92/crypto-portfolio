@@ -34,9 +34,23 @@ create table if not exists snapshots (
 
 create index if not exists snapshots_date_idx on snapshots (taken_date desc);
 
+-- Upbit balances, written by the sync worker (scripts/upbit-sync). Upbit's
+-- authenticated API requires an IP allowlist, which Vercel cannot satisfy —
+-- so a fixed-IP box pushes quantities here and the app prices them with
+-- Upbit's public quotation API. One row per currency, KRW included.
+create table if not exists upbit_balances (
+  currency text primary key,
+  balance numeric not null default 0,
+  locked numeric not null default 0,
+  avg_buy_price numeric not null default 0,
+  unit_currency text not null default 'KRW',
+  updated_at timestamptz not null default now()
+);
+
 -- This app only talks to Supabase via the service_role key on the server, which
 -- already bypasses RLS. Enabling RLS here only adds a footgun (misusing the
 -- anon key becomes silently impossible to debug), so we leave it off. If you
 -- later add browser-side anon access, flip these on and write explicit policies.
 alter table config disable row level security;
 alter table snapshots disable row level security;
+alter table upbit_balances disable row level security;
