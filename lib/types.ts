@@ -26,8 +26,10 @@ export type PortfolioData = {
   totalDepositKrw: number;
   /** The manually entered part — everything except Upbit. */
   depositBaseKrw: number;
-  /** Derived from Upbit cost basis + cash; 0 when Upbit is unavailable. */
+  /** Derived from what the Upbit coins cost; 0 when Upbit is unavailable. */
   upbitSeedKrw: number;
+  /** Undeployed KRW sitting in Upbit — shown for context, in no total. */
+  upbitCashKrw: number;
   profitKrw: number;
   profitPct: number;
 };

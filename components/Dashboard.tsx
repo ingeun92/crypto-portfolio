@@ -105,6 +105,11 @@ export function Dashboard({ data, error, config, history }: Props) {
                     {fmtKrw(data.depositBaseKrw)} + Upbit {fmtKrw(data.upbitSeedKrw)}
                   </div>
                 )}
+                {data.upbitCashKrw > 0 && (
+                  <div className="mt-1 num text-[10px] text-muted">
+                    Upbit cash {fmtKrw(data.upbitCashKrw)} excluded
+                  </div>
+                )}
               </div>
             </div>
           </section>

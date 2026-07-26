@@ -12,16 +12,18 @@ export type UpbitPosition = {
 };
 
 export type UpbitResult = {
+  /** Market value of the coins only — undeployed KRW cash is not counted. */
   totalKrw: number;
   positions: UpbitPosition[];
   /**
-   * KRW wired into Upbit: what the coins cost plus cash not yet deployed.
-   * With buy-only activity this equals net deposits exactly — every won that
-   * entered either bought a coin (captured by avg_buy_price) or is still
-   * sitting as cash. Selling would break the identity, since realized gains
-   * would land in cash while the cost basis disappears.
+   * What the held coins cost, from `avg_buy_price`. This is the Upbit seed:
+   * cash sitting in the account was wired in but never became an asset we
+   * track, so it stays out of both this number and `totalKrw` — counting it
+   * on one side only would move profit by the full cash balance.
    */
   costBasisKrw: number;
+  /** Undeployed KRW cash. Reported for context; excluded from every total. */
+  cashKrw: number;
   /** Newest `updated_at` across balance rows; null when nothing synced yet. */
   syncedAt: string | null;
   /** Currencies held but not priceable on a KRW market — excluded from totals. */
@@ -89,16 +91,17 @@ async function readBalances(): Promise<BalanceRow[]> {
 }
 
 /**
- * Value the synced Upbit balances in KRW.
+ * Value the synced Upbit coin balances in KRW.
  *
  * `balance + locked` is the real holding — `locked` covers quantity tied up in
- * open orders, which is still the user's asset. KRW rows are cash and count at
- * face value.
+ * open orders, which is still the user's asset. The KRW row is cash waiting to
+ * be deployed, not a crypto position, so it is reported separately and left out
+ * of the totals.
  */
 export async function upbitPortfolio(): Promise<UpbitResult> {
   const rows = await readBalances();
   if (rows.length === 0) {
-    return { totalKrw: 0, positions: [], costBasisKrw: 0, syncedAt: null, unpriced: [] };
+    return { totalKrw: 0, positions: [], costBasisKrw: 0, cashKrw: 0, syncedAt: null, unpriced: [] };
   }
 
   const syncedAt = rows.reduce(
@@ -108,6 +111,7 @@ export async function upbitPortfolio(): Promise<UpbitResult> {
 
   let totalKrw = 0;
   let costBasisKrw = 0;
+  let cashKrw = 0;
   const positions: UpbitPosition[] = [];
   const unpriced: string[] = [];
   const coins: { currency: string; quantity: number }[] = [];
@@ -116,9 +120,7 @@ export async function upbitPortfolio(): Promise<UpbitResult> {
     const quantity = Number(r.balance) + Number(r.locked);
     if (!Number.isFinite(quantity) || quantity <= 0) continue;
     if (r.currency === "KRW") {
-      totalKrw += quantity;
-      costBasisKrw += quantity;
-      positions.push({ currency: "KRW", quantity, valueKrw: quantity });
+      cashKrw += quantity;
       continue;
     }
     // Cost basis counts every held coin, including ones we cannot price — the
@@ -154,5 +156,5 @@ export async function upbitPortfolio(): Promise<UpbitResult> {
   }
 
   positions.sort((a, b) => b.valueKrw - a.valueKrw);
-  return { totalKrw, positions, costBasisKrw, syncedAt, unpriced };
+  return { totalKrw, positions, costBasisKrw, cashKrw, syncedAt, unpriced };
 }

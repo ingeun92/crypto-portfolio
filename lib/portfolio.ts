@@ -99,7 +99,14 @@ async function safeUpbit(
   } catch (e: any) {
     warnings.push(`${label}: ${String(e?.message ?? e)}`);
     return {
-      result: { totalKrw: 0, positions: [], costBasisKrw: 0, syncedAt: null, unpriced: [] },
+      result: {
+        totalKrw: 0,
+        positions: [],
+        costBasisKrw: 0,
+        cashKrw: 0,
+        syncedAt: null,
+        unpriced: [],
+      },
       unavailable: true,
     };
   }
@@ -173,13 +180,15 @@ export async function computePortfolio(): Promise<PortfolioData & { warnings: st
       p.unavailable || availableTotalUsd <= 0 ? 0 : p.valueUsd / availableTotalUsd,
   }));
 
-  // `total_deposit_krw` covers seed outside Upbit only. Money wired into Upbit
-  // is derived from what was actually bought plus cash still sitting there, so
-  // the user never has to update a number after a DCA buy. When Upbit is
-  // unavailable its value is excluded from the total too, so both sides of the
-  // profit calculation drop out together and the percentage stays honest.
+  // `total_deposit_krw` covers seed outside Upbit only. The Upbit side is
+  // derived from what the held coins cost, so the user never has to update a
+  // number after a DCA buy. Undeployed KRW cash sits on neither side — it is
+  // absent from `totalKrw` as well, so profit reflects the coins alone. When
+  // Upbit is unavailable its value drops out of the total too, keeping both
+  // sides of the calculation consistent.
   const depositBaseKrw = Number(cfg.total_deposit_krw);
   const upbitSeedKrw = upbit.unavailable ? 0 : upbit.result.costBasisKrw;
+  const upbitCashKrw = upbit.unavailable ? 0 : upbit.result.cashKrw;
   const deposit = depositBaseKrw + upbitSeedKrw;
   const profitKrw = totalKrw - deposit;
   const profitPct = deposit > 0 ? (profitKrw / deposit) * 100 : 0;
@@ -194,6 +203,7 @@ export async function computePortfolio(): Promise<PortfolioData & { warnings: st
     totalDepositKrw: deposit,
     depositBaseKrw,
     upbitSeedKrw,
+    upbitCashKrw,
     profitKrw,
     profitPct,
     warnings,
