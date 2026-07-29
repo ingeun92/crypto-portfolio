@@ -127,7 +127,7 @@ export async function computePortfolio(): Promise<PortfolioData & { warnings: st
   // address calls with a gap so back-to-back refreshes are less likely to get
   // the second request throttled. ~900ms empirically avoids the burst cap for
   // Phantom (Solana) that we'd previously see 429s on. Sui uses a separate
-  // RPC + CoinGecko, so we fire it in parallel with the second Zerion call.
+  // GraphQL RPC + CoinGecko, so we fire it in parallel with the second Zerion call.
   const rabby = await safeZerion("Rabby", cfg.evm_address, zerionKey, warnings);
   if (cfg.evm_address && cfg.solana_address) await sleep(900);
   const [phantomSol, phantomSui, upbit] = await Promise.all([
@@ -140,7 +140,7 @@ export async function computePortfolio(): Promise<PortfolioData & { warnings: st
 
   const stableValueUsd = Number(cfg.stable_qty) * stablePrice;
 
-  // Phantom holds both Solana (via Zerion) and Sui (via Sui RPC + CoinGecko).
+  // Phantom holds both Solana (via Zerion) and Sui (via Sui GraphQL + CoinGecko).
   // Treat Phantom as unavailable only when every configured address failed,
   // so a partial result (e.g. Sui priced but Solana rate-limited) still shows.
   const phantomHasSol = !!cfg.solana_address && !phantomSol.unavailable;

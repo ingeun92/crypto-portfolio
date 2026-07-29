@@ -7,7 +7,7 @@
 
 - Next.js 14 (App Router) + TypeScript + Tailwind CSS
 - Supabase (config 싱글톤 + 일별 snapshots + upbit_balances)
-- Zerion API (EVM + Solana 포트폴리오 집계), Sui RPC (Sui 잔고)
+- Zerion API (EVM + Solana 포트폴리오 집계), Sui GraphQL RPC (Sui 잔고)
 - Upbit public API (원화 마켓 시세) + 고정 IP 워커의 인증 API 동기화
 - CoinGecko (`$STABLE`), open.er-api.com (USD/KRW)
 - Vercel 배포 + Vercel Cron(일 1회 UTC 15:05 = KST 00:05)
@@ -128,7 +128,7 @@ lib/
   supabase.ts   service_role 클라이언트
   prices.ts     CoinGecko/FX fetch
   zerion.ts     포트폴리오 포지션 집계
-  sui.ts        Sui RPC 잔고 + CoinGecko 가격
+  sui.ts        Sui GraphQL 잔고 + CoinGecko 가격
   upbit.ts      동기화된 잔고 조회 + 원화 마켓 시세 평가
   portfolio.ts  전체 계산 orchestration
   format.ts     KRW/USD/% 포매터
