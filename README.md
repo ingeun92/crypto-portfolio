@@ -9,7 +9,7 @@
 - Supabase (config 싱글톤 + 일별 snapshots + upbit_balances)
 - Zerion API (EVM + Solana 포트폴리오 집계), Sui GraphQL RPC (Sui 잔고)
 - Upbit public API (원화 마켓 시세) + 고정 IP 워커의 인증 API 동기화
-- CoinGecko (`$STABLE`), open.er-api.com (USD/KRW)
+- CoinGecko Demo API (`$STABLE`, Sui 토큰 가격), open.er-api.com (USD/KRW)
 - Vercel 배포 + Vercel Cron(일 1회 UTC 15:05 = KST 00:05)
 
 ## Setup
@@ -27,6 +27,11 @@
 1. [developers.zerion.io](https://developers.zerion.io) 가입 → API 키 발급
 2. `ZERION_API_KEY`에 저장
 
+### 2-1. CoinGecko Demo API 키
+
+1. [CoinGecko API](https://www.coingecko.com/en/api/pricing)에서 무료 Demo 플랜 가입 → 키 발급 (`CG-...`)
+2. `COINGECKO_API_KEY`에 저장 — 키 없이 호출하면 `simple/price`가 403으로 막혀 `$STABLE`·Sui 가격이 빠짐
+
 ### 3. 비밀번호와 시크릿
 
 ```bash
@@ -42,6 +47,7 @@ AUTH_SECRET=위에서-생성한-hex
 NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOi...
 ZERION_API_KEY=zk_dev_...
+COINGECKO_API_KEY=CG-...
 CRON_SECRET=위에서-생성한-hex
 ```
 
@@ -72,6 +78,7 @@ vercel env add AUTH_SECRET production
 vercel env add NEXT_PUBLIC_SUPABASE_URL production
 vercel env add SUPABASE_SERVICE_ROLE_KEY production
 vercel env add ZERION_API_KEY production
+vercel env add COINGECKO_API_KEY production
 vercel env add CRON_SECRET production
 vercel env add UPBIT_SYNC_SECRET production
 vercel --prod

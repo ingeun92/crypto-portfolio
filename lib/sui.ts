@@ -18,6 +18,7 @@
 // build a normalized coinType → CoinGecko id map, then batch-price all
 // mapped coins with `simple/price?ids=…`.
 import { memoize } from "./cache";
+import { coingecko } from "./coingecko";
 
 export type SuiPosition = {
   symbol: string;
@@ -92,12 +93,10 @@ function normalizeCoinType(t: string): string {
 }
 
 async function rawCoinMap(): Promise<Record<string, string>> {
-  const r = await fetch("https://api.coingecko.com/api/v3/coins/list?include_platform=true", {
-    headers: { "User-Agent": UA, Accept: "application/json" },
-    cache: "no-store",
-  });
-  if (!r.ok) throw new Error(`CoinGecko coins/list ${r.status}`);
-  const list = (await r.json()) as Array<{ id: string; platforms?: Record<string, string | null> }>;
+  const list = await coingecko<Array<{ id: string; platforms?: Record<string, string | null> }>>(
+    "coins/list",
+    "/coins/list?include_platform=true",
+  );
   const out: Record<string, string> = {};
   for (const c of list) {
     const suiAddr = c.platforms?.sui;
@@ -124,17 +123,15 @@ function fetchCoinMetadata(coinType: string): Promise<CoinMetadata> {
     .catch(() => null);
 }
 
+// Throws on HTTP failure rather than returning {} — an empty price map would
+// price every coin at $0 and silently zero the Sui position instead of
+// surfacing a warning through `safeSui`.
 async function fetchPricesByIds(ids: string[]): Promise<Record<string, number>> {
   if (ids.length === 0) return {};
-  const url =
-    "https://api.coingecko.com/api/v3/simple/price" +
-    `?ids=${encodeURIComponent(ids.join(","))}&vs_currencies=usd`;
-  const r = await fetch(url, {
-    headers: { "User-Agent": UA, Accept: "application/json" },
-    cache: "no-store",
-  });
-  if (!r.ok) return {};
-  const j = await r.json().catch(() => ({}));
+  const j = await coingecko<Record<string, unknown>>(
+    "Sui prices",
+    `/simple/price?ids=${encodeURIComponent(ids.join(","))}&vs_currencies=usd`,
+  );
   const out: Record<string, number> = {};
   for (const [id, v] of Object.entries(j ?? {})) {
     const p = Number((v as any)?.usd);
